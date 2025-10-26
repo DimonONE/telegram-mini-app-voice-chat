@@ -4,9 +4,21 @@ import VideoGrid from './VideoGrid'
 import ControlPanel from './ControlPanel'
 import { useWebRTC } from '../hooks/useWebRTC'
 
+// Get backend URL
+const getBackendUrl = () => {
+  const protocol = window.location.protocol
+  const host = window.location.hostname
+  
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return `${protocol}//${host}:8000`
+  }
+  return `${protocol}//${host}:8000`
+}
+
 function VoiceChat({ roomId, userData, onLeaveRoom }) {
   const [isMicEnabled, setIsMicEnabled] = useState(true)
   const [isCameraEnabled, setIsCameraEnabled] = useState(false)
+  const [sendingNotification, setSendingNotification] = useState(false)
   const localStreamRef = useRef(null)
 
   const {
@@ -105,6 +117,29 @@ function VoiceChat({ roomId, userData, onLeaveRoom }) {
     onLeaveRoom()
   }
 
+  const handleSendParticipantsToTelegram = async () => {
+    setSendingNotification(true)
+    try {
+      const backendUrl = getBackendUrl()
+      const response = await fetch(`${backendUrl}/api/room/${roomId}/participants/notify?user_id=${userData.id}`, {
+        method: 'POST'
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        alert('✅ Список участников отправлен в Telegram!')
+      } else {
+        alert('⚠️ ' + (data.message || 'Ошибка отправки. Проверьте настройку бота.'))
+      }
+    } catch (error) {
+      console.error('Error sending notification:', error)
+      alert('❌ Ошибка отправки уведомления')
+    } finally {
+      setSendingNotification(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-tg-bg">
       {/* Header */}
@@ -137,6 +172,8 @@ function VoiceChat({ roomId, userData, onLeaveRoom }) {
           participants={participants}
           speakingUsers={speakingUsers}
           currentUserId={userData.id}
+          onSendToTelegram={handleSendParticipantsToTelegram}
+          sendingNotification={sendingNotification}
         />
       </div>
 

@@ -1,7 +1,17 @@
-function ParticipantList({ participants, speakingUsers, currentUserId }) {
+function ParticipantList({ participants, speakingUsers, currentUserId, onSendToTelegram, sendingNotification }) {
   return (
     <div className="bg-tg-secondary-bg border-t border-gray-200 p-4">
-      <h3 className="text-sm font-semibold text-tg-hint mb-3">УЧАСТНИКИ</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-tg-hint">УЧАСТНИКИ</h3>
+        <button
+          onClick={onSendToTelegram}
+          disabled={sendingNotification}
+          className="text-xs bg-tg-button text-tg-button-text px-3 py-1 rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+          title="Отправить список участников в Telegram"
+        >
+          {sendingNotification ? 'Отправка...' : '📤 Отправить в Telegram'}
+        </button>
+      </div>
       <div className="space-y-2 max-h-48 overflow-y-auto">
         {participants.map((participant) => {
           const isSpeaking = speakingUsers.has(participant.user_id)

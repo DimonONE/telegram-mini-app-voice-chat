@@ -9,6 +9,7 @@ from typing import Dict, Set, Optional
 import json
 import asyncio
 import os
+from telegram_bot import bot
 
 app = FastAPI(title="Telegram Mini App Signaling Server")
 
@@ -176,6 +177,85 @@ async def get_ice_config():
     }
 
 
+@app.get("/api/user/{user_id}")
+async def get_user_info(user_id: int):
+    """
+    Get enhanced user information from Telegram Bot API
+    Requires TELEGRAM_BOT_TOKEN environment variable
+    """
+    if not bot.is_configured():
+        return {
+            "success": False,
+            "message": "Telegram Bot API не настроен. Установите TELEGRAM_BOT_TOKEN в переменных окружения."
+        }
+    
+    photos = await bot.get_user_profile_photos(user_id)
+    
+    if photos and photos.get("total_count", 0) > 0:
+        # Get first photo
+        photo = photos["photos"][0][-1]  # Largest size
+        file_id = photo["file_id"]
+        photo_url = await bot.get_file_url(file_id)
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "photo_url": photo_url,
+            "has_photo": True
+        }
+    
+    return {
+        "success": True,
+        "user_id": user_id,
+        "has_photo": False
+    }
+
+
+@app.post("/api/room/{room_id}/participants/notify")
+async def notify_room_participants(room_id: str, user_id: int):
+    """
+    Send list of participants to user via Telegram bot
+    """
+    if not bot.is_configured():
+        return {
+            "success": False,
+            "message": "Telegram Bot API не настроен"
+        }
+    
+    participants = manager.get_room_participants(room_id)
+    success = await bot.notify_participant_list(user_id, room_id, participants)
+    
+    return {
+        "success": success,
+        "message": "Уведомление отправлено" if success else "Ошибка отправки уведомления"
+    }
+
+
+@app.get("/api/room/{room_id}/participants")
+async def get_room_participants(room_id: str):
+    """
+    Get list of participants in a room
+    """
+    participants = manager.get_room_participants(room_id)
+    return {
+        "room_id": room_id,
+        "participants": participants,
+        "count": len(participants)
+    }
+
+
+@app.post("/api/notify/joined")
+async def notify_user_joined(user_id: int, user_name: str, room_id: str):
+    """
+    Notify user that they joined a room via Telegram
+    """
+    if not bot.is_configured():
+        return {"success": False, "message": "Bot не настроен"}
+    
+    success = await bot.notify_user_joined(user_id, user_name, room_id)
+    return {"success": success}
+
+
 @app.websocket("/ws/{room_id}/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
     """
@@ -214,6 +294,16 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
                 "user_id": user_id,
                 "user_info": user_info
             }, exclude_user=user_id)
+            
+            # Send Telegram notification if bot is configured
+            if bot.is_configured():
+                try:
+                    telegram_user_id = int(user_id) if user_id.isdigit() else None
+                    if telegram_user_id:
+                        user_name = f"{user_info.get('first_name', '')} {user_info.get('last_name', '')}".strip()
+                        asyncio.create_task(bot.notify_user_joined(telegram_user_id, user_name, room_id))
+                except (ValueError, AttributeError):
+                    pass  # user_id is not a Telegram ID
         
         # Handle signaling messages
         while True:
