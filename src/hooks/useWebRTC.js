@@ -16,7 +16,7 @@ async function fetchIceConfig() {
     let backendUrl
 
     if (apiUrl) {
-      backendUrl = apiUrl
+      backendUrl = `${apiUrl}/ws`
     } else if (host === 'localhost' || host === '127.0.0.1') {
       backendUrl = `${protocol}//${host}:8000`
     } 
@@ -63,7 +63,7 @@ export function useWebRTC(roomId, userData) {
     // In development, backend runs on port 8000
     // In production on Replit, use the same domain
     if (apiUrl) {
-      return apiUrl
+      return `${apiUrl}/ws`
     }
     else if (host === 'localhost' || host === '127.0.0.1') {
       return `${protocol}//${host}:8000/ws/${roomId}/${userData.id}`
