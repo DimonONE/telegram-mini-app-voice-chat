@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
+import { API_URL } from '@config'
 
 /**
  * Fetch ICE server configuration from backend
@@ -9,14 +10,16 @@ async function fetchIceConfig() {
   try {
     const protocol = window.location.protocol
     const host = window.location.hostname
+    const apiUrl = API_URL
     
     // Determine backend URL
     let backendUrl
-    if (host === 'localhost' || host === '127.0.0.1') {
+
+    if (apiUrl) {
+      backendUrl = apiUrl
+    } else if (host === 'localhost' || host === '127.0.0.1') {
       backendUrl = `${protocol}//${host}:8000`
-    } else {
-      backendUrl = `${protocol}//${host}:8000`
-    }
+    } 
     
     const response = await fetch(`${backendUrl}/api/ice-config`)
     if (!response.ok) {
@@ -55,10 +58,14 @@ export function useWebRTC(roomId, userData) {
   const getWebSocketUrl = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.hostname
+    const apiUrl = API_URL
     
     // In development, backend runs on port 8000
     // In production on Replit, use the same domain
-    if (host === 'localhost' || host === '127.0.0.1') {
+    if (apiUrl) {
+      return apiUrl
+    }
+    else if (host === 'localhost' || host === '127.0.0.1') {
       return `${protocol}//${host}:8000/ws/${roomId}/${userData.id}`
     }
     
