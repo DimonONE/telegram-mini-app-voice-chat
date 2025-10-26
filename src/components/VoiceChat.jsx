@@ -11,7 +11,6 @@ const getBackendUrl = () => {
   const protocol = window.location.protocol
   const host = window.location.hostname
   const apiUrl = API_URL
-  console.log("apiUrl", apiUrl);
   
   if (apiUrl) {
     return apiUrl

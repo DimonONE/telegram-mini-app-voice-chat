@@ -14,6 +14,10 @@ function App() {
     
     // Get Telegram user data
     const tgUser = WebApp.initDataUnsafe?.user
+
+    console.log("WebApp.initDataUnsafe", WebApp.initDataUnsafe);
+    console.log("tgUser", tgUser);
+    
     
     if (tgUser) {
       setUserData({
@@ -28,9 +32,9 @@ function App() {
       const randomId = Math.random().toString(36).substring(7)
       setUserData({
         id: randomId,
-        first_name: 'Test User',
+        first_name: 'User',
         last_name: '',
-        username: 'testuser',
+        username: 'User',
         photo_url: `https://ui-avatars.com/api/?name=Test+User&background=random`
       })
     }
