@@ -1,0 +1,219 @@
+"""
+FastAPI WebSocket Signaling Server for Telegram Mini App Voice/Video Chat
+Handles WebRTC signaling (offer, answer, ICE candidates) and room management
+"""
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from typing import Dict, Set
+import json
+import asyncio
+
+app = FastAPI(title="Telegram Mini App Signaling Server")
+
+# CORS configuration for Telegram Mini App
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Store active connections: {room_id: {user_id: websocket}}
+rooms: Dict[str, Dict[str, WebSocket]] = {}
+
+# Store user information: {user_id: {name, photo_url, room_id}}
+users: Dict[str, dict] = {}
+
+
+class ConnectionManager:
+    """Manages WebSocket connections for rooms"""
+    
+    async def connect(self, websocket: WebSocket, room_id: str, user_id: str, user_info: dict):
+        """Add user to room"""
+        await websocket.accept()
+        
+        if room_id not in rooms:
+            rooms[room_id] = {}
+        
+        rooms[room_id][user_id] = websocket
+        users[user_id] = {
+            **user_info,
+            "room_id": room_id
+        }
+        
+        # Notify all users in room about new participant
+        await self.broadcast_to_room(room_id, {
+            "type": "user_joined",
+            "user_id": user_id,
+            "user_info": user_info,
+            "participants": self.get_room_participants(room_id)
+        }, exclude_user=None)
+    
+    def disconnect(self, room_id: str, user_id: str):
+        """Remove user from room"""
+        if room_id in rooms and user_id in rooms[room_id]:
+            del rooms[room_id][user_id]
+            
+            if not rooms[room_id]:
+                del rooms[room_id]
+        
+        if user_id in users:
+            del users[user_id]
+    
+    async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: str = None):
+        """Send message to all users in room"""
+        if room_id not in rooms:
+            return
+        
+        disconnected_users = []
+        
+        for user_id, websocket in rooms[room_id].items():
+            if user_id == exclude_user:
+                continue
+            
+            try:
+                await websocket.send_json(message)
+            except Exception:
+                disconnected_users.append(user_id)
+        
+        # Clean up disconnected users
+        for user_id in disconnected_users:
+            self.disconnect(room_id, user_id)
+    
+    async def send_to_user(self, room_id: str, user_id: str, message: dict):
+        """Send message to specific user"""
+        if room_id in rooms and user_id in rooms[room_id]:
+            try:
+                await rooms[room_id][user_id].send_json(message)
+            except Exception:
+                self.disconnect(room_id, user_id)
+    
+    def get_room_participants(self, room_id: str) -> list:
+        """Get list of participants in room"""
+        if room_id not in rooms:
+            return []
+        
+        participants = []
+        for user_id in rooms[room_id].keys():
+            if user_id in users:
+                participants.append({
+                    "user_id": user_id,
+                    **users[user_id]
+                })
+        
+        return participants
+
+
+manager = ConnectionManager()
+
+
+@app.get("/")
+async def root():
+    """Health check endpoint"""
+    return {
+        "status": "running",
+        "service": "Telegram Mini App Signaling Server",
+        "active_rooms": len(rooms),
+        "active_users": len(users)
+    }
+
+
+@app.websocket("/ws/{room_id}/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
+    """
+    WebSocket endpoint for signaling
+    Handles WebRTC offer, answer, and ICE candidate exchange
+    """
+    user_info = None
+    
+    try:
+        # Wait for initial user info
+        await websocket.accept()
+        init_message = await websocket.receive_json()
+        
+        if init_message.get("type") == "join":
+            user_info = init_message.get("user_info", {})
+            
+            # Add user to room
+            if room_id not in rooms:
+                rooms[room_id] = {}
+            
+            rooms[room_id][user_id] = websocket
+            users[user_id] = {
+                **user_info,
+                "room_id": room_id
+            }
+            
+            # Send current participants to new user
+            await websocket.send_json({
+                "type": "room_state",
+                "participants": manager.get_room_participants(room_id)
+            })
+            
+            # Notify others about new participant
+            await manager.broadcast_to_room(room_id, {
+                "type": "user_joined",
+                "user_id": user_id,
+                "user_info": user_info
+            }, exclude_user=user_id)
+        
+        # Handle signaling messages
+        while True:
+            data = await websocket.receive_json()
+            message_type = data.get("type")
+            
+            if message_type == "offer":
+                # Forward offer to target user
+                target_user = data.get("target_user_id")
+                await manager.send_to_user(room_id, target_user, {
+                    "type": "offer",
+                    "from_user_id": user_id,
+                    "offer": data.get("offer")
+                })
+            
+            elif message_type == "answer":
+                # Forward answer to target user
+                target_user = data.get("target_user_id")
+                await manager.send_to_user(room_id, target_user, {
+                    "type": "answer",
+                    "from_user_id": user_id,
+                    "answer": data.get("answer")
+                })
+            
+            elif message_type == "ice_candidate":
+                # Forward ICE candidate to target user
+                target_user = data.get("target_user_id")
+                await manager.send_to_user(room_id, target_user, {
+                    "type": "ice_candidate",
+                    "from_user_id": user_id,
+                    "candidate": data.get("candidate")
+                })
+            
+            elif message_type == "speaking":
+                # Broadcast speaking status
+                await manager.broadcast_to_room(room_id, {
+                    "type": "speaking",
+                    "user_id": user_id,
+                    "is_speaking": data.get("is_speaking", False)
+                }, exclude_user=user_id)
+    
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
+        # Clean up on disconnect
+        manager.disconnect(room_id, user_id)
+        
+        # Notify others about user leaving
+        await manager.broadcast_to_room(room_id, {
+            "type": "user_left",
+            "user_id": user_id
+        })
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
