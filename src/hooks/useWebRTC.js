@@ -1,34 +1,42 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
 /**
- * WebRTC Configuration
- * You can modify TURN server credentials here for production use
+ * Fetch ICE server configuration from backend
+ * TURN server credentials are configured via environment variables on the backend
+ * This ensures secure credential management
  */
-const ICE_SERVERS = {
-  iceServers: [
-    {
-      urls: 'stun:stun.l.google.com:19302'
-    },
-    {
-      urls: 'stun:stun1.l.google.com:19302'
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:80',
-      username: 'openai',
-      credential: '12345'
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-      username: 'openai',
-      credential: '12345'
-    },
-    {
-      urls: 'turn:global.relay.metered.ca:443',
-      username: 'openai',
-      credential: '12345'
+async function fetchIceConfig() {
+  try {
+    const protocol = window.location.protocol
+    const host = window.location.hostname
+    
+    // Determine backend URL
+    let backendUrl
+    if (host === 'localhost' || host === '127.0.0.1') {
+      backendUrl = `${protocol}//${host}:8000`
+    } else {
+      backendUrl = `${protocol}//${host}:8000`
     }
-  ],
-  iceCandidatePoolSize: 10
+    
+    const response = await fetch(`${backendUrl}/api/ice-config`)
+    if (!response.ok) {
+      throw new Error('Failed to fetch ICE configuration')
+    }
+    
+    const config = await response.json()
+    return config
+  } catch (error) {
+    console.error('Error fetching ICE config:', error)
+    
+    // Fallback to STUN-only configuration for development
+    return {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ],
+      iceCandidatePoolSize: 10
+    }
+  }
 }
 
 export function useWebRTC(roomId, userData) {
@@ -41,6 +49,7 @@ export function useWebRTC(roomId, userData) {
   const peerConnectionsRef = useRef({})
   const audioContextRef = useRef(null)
   const analyserNodesRef = useRef({})
+  const iceConfigRef = useRef(null)
 
   // Get WebSocket URL based on environment
   const getWebSocketUrl = () => {
@@ -104,7 +113,7 @@ export function useWebRTC(roomId, userData) {
 
   // Create peer connection for a specific user
   const createPeerConnection = useCallback((userId) => {
-    const peerConnection = new RTCPeerConnection(ICE_SERVERS)
+    const peerConnection = new RTCPeerConnection(iceConfigRef.current)
 
     // Add local stream tracks
     if (localStreamRef.current) {
@@ -154,8 +163,14 @@ export function useWebRTC(roomId, userData) {
   }, [setupAudioAnalysis])
 
   // Connect to signaling server
-  const connect = useCallback((localStream) => {
+  const connect = useCallback(async (localStream) => {
     localStreamRef.current = localStream
+
+    // Fetch ICE configuration from backend
+    if (!iceConfigRef.current) {
+      iceConfigRef.current = await fetchIceConfig()
+      console.log('ICE configuration loaded:', iceConfigRef.current)
+    }
 
     // Setup audio analysis for local stream
     if (localStream.getAudioTracks().length > 0) {

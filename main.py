@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Set, Optional
 import json
 import asyncio
+import os
 
 app = FastAPI(title="Telegram Mini App Signaling Server")
 
@@ -117,6 +118,61 @@ async def root():
         "service": "Telegram Mini App Signaling Server",
         "active_rooms": len(rooms),
         "active_users": len(users)
+    }
+
+
+@app.get("/api/ice-config")
+async def get_ice_config():
+    """
+    Get ICE server configuration including STUN/TURN servers
+    TURN credentials can be configured via environment variables:
+    - TURN_URL: TURN server URL (default: turn:global.relay.metered.ca:80)
+    - TURN_USERNAME: TURN server username
+    - TURN_PASSWORD: TURN server password
+    """
+    ice_servers = [
+        {
+            "urls": "stun:stun.l.google.com:19302"
+        },
+        {
+            "urls": "stun:stun1.l.google.com:19302"
+        }
+    ]
+    
+    # Add TURN servers if credentials are configured
+    turn_url = os.getenv("TURN_URL", "turn:global.relay.metered.ca:80")
+    turn_username = os.getenv("TURN_USERNAME")
+    turn_password = os.getenv("TURN_PASSWORD")
+    
+    if turn_username and turn_password:
+        # Add TURN servers with valid credentials
+        ice_servers.extend([
+            {
+                "urls": turn_url,
+                "username": turn_username,
+                "credential": turn_password
+            },
+            {
+                "urls": turn_url.replace(":80", ":80?transport=tcp"),
+                "username": turn_username,
+                "credential": turn_password
+            },
+            {
+                "urls": turn_url.replace(":80", ":443"),
+                "username": turn_username,
+                "credential": turn_password
+            }
+        ])
+    else:
+        # Use public STUN servers only (fallback for development)
+        # Note: Without TURN servers, connections may fail on restrictive networks
+        ice_servers.append({
+            "urls": "stun:stun2.l.google.com:19302"
+        })
+    
+    return {
+        "iceServers": ice_servers,
+        "iceCandidatePoolSize": 10
     }
 
 

@@ -86,17 +86,30 @@ This is a fully functional Telegram Mini App with voice and video chat capabilit
 
 ## Configuration
 
-### TURN Server
-Default configuration in `src/hooks/useWebRTC.js`:
-```javascript
-{
-  urls: 'turn:global.relay.metered.ca:80',
-  username: 'openai',
-  credential: '12345'
-}
-```
+### TURN Server Configuration
+The application now uses environment variables for secure TURN server credential management:
 
-For production, replace with your own TURN server credentials.
+**Environment Variables** (optional but recommended for production):
+- `TURN_URL`: TURN server URL (default: turn:global.relay.metered.ca:80)
+- `TURN_USERNAME`: TURN server username
+- `TURN_PASSWORD`: TURN server password
+
+**How it works**:
+1. Backend exposes `/api/ice-config` endpoint that returns ICE server configuration
+2. Frontend fetches configuration on connection initialization
+3. If TURN credentials are set, they're used; otherwise falls back to STUN-only
+4. Credentials never exposed to client, only delivered via secure backend endpoint
+
+**For production**:
+1. Copy `.env.example` to `.env`
+2. Set TURN credentials from providers like Metered, Twilio, or Xirsys
+3. Restart backend server
+
+This approach ensures:
+- No hardcoded credentials in source code
+- Secure credential management
+- Easy configuration via environment variables
+- Graceful fallback to STUN when TURN unavailable
 
 ### Environment
 - Frontend: Port 5000 (Vite dev server)
