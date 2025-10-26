@@ -3,14 +3,18 @@ import ParticipantList from './ParticipantList'
 import VideoGrid from './VideoGrid'
 import ControlPanel from './ControlPanel'
 import { useWebRTC } from '../hooks/useWebRTC'
+import { API_URL } from '@config'
+  const apiUrl = API_URL
+  console.log("apiUrl", apiUrl) // remove this after you've confirmed it is working
 
 // Get backend URL
 const getBackendUrl = () => {
   const protocol = window.location.protocol
   const host = window.location.hostname
+
   
-  if (host === 'localhost' || host === '127.0.0.1') {
-    return `${protocol}//${host}:8000`
+  if (apiUrl) {
+    return apiUrl
   }
   return `${protocol}//${host}:8000`
 }
