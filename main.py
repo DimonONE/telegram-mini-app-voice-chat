@@ -5,7 +5,7 @@ Handles WebRTC signaling (offer, answer, ICE candidates) and room management
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 import json
 import asyncio
 
@@ -62,7 +62,7 @@ class ConnectionManager:
         if user_id in users:
             del users[user_id]
     
-    async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: str = None):
+    async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: Optional[str] = None):
         """Send message to all users in room"""
         if room_id not in rooms:
             return
