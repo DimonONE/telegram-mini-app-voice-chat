@@ -4,14 +4,15 @@ import VideoGrid from './VideoGrid'
 import ControlPanel from './ControlPanel'
 import { useWebRTC } from '../hooks/useWebRTC'
 import { API_URL } from '@config'
-  const apiUrl = API_URL
-console.log("apiUrl", apiUrl);
+
 
 // Get backend URL
 const getBackendUrl = () => {
   const protocol = window.location.protocol
   const host = window.location.hostname
-
+  const apiUrl = API_URL
+  console.log("apiUrl", apiUrl);
+  
   if (apiUrl) {
     return apiUrl
   }
