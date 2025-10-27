@@ -385,17 +385,33 @@ export function useWebRTC(roomId, userData) {
   const updateStream = useCallback((newStream) => {
     localStreamRef.current = newStream
 
-    // Update all peer connections with new tracks
-    Object.values(peerConnectionsRef.current).forEach(pc => {
-      const senders = pc.getSenders()
-      
-      // Remove old tracks
-      senders.forEach(sender => pc.removeTrack(sender))
-      
-      // Add new tracks
-      newStream.getTracks().forEach(track => {
-        pc.addTrack(track, newStream)
+    Object.entries(peerConnectionsRef.current).forEach(async ([userId, pc]) => {
+      pc.getSenders().forEach(sender => {
+        if (!newStream.getTracks().includes(sender.track)) {
+          pc.removeTrack(sender)
+        }
       })
+
+      newStream.getTracks().forEach(track => {
+        const exists = pc.getSenders().some(sender => sender.track === track)
+        if (!exists) {
+          pc.addTrack(track, newStream)
+        }
+      })
+
+      try {
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'offer',
+            target_user_id: userId,
+            offer: offer
+          }))
+        }
+      } catch (err) {
+        console.warn('updateStream offer error', err)
+      }
     })
   }, [])
 
