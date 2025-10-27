@@ -93,22 +93,33 @@ export function useWebRTC(roomId, userData) {
     const bufferLength = analyser.frequencyBinCount
     const dataArray = new Uint8Array(bufferLength)
 
+    // вставить внутри setupAudioAnalysis, где меняешь speaking state
+    let lastState = false;
+
     const checkAudioLevel = () => {
-      if (!analyserNodesRef.current[userId]) return
+      if (!analyserNodesRef.current[userId]) return;
 
       analyser.getByteFrequencyData(dataArray)
       const average = dataArray.reduce((a, b) => a + b) / bufferLength
-
-      // Threshold for speaking detection
       const isSpeaking = average > 15
+
+      if (isSpeaking !== lastState) {
+        lastState = isSpeaking
+
+        // отправляем в WS (если соединение открыто)
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'speaking',
+            user_id: userId,
+            is_speaking: isSpeaking
+          }))
+        }
+      }
 
       setSpeakingUsers(prev => {
         const newSet = new Set(prev)
-        if (isSpeaking) {
-          newSet.add(userId)
-        } else {
-          newSet.delete(userId)
-        }
+        if (isSpeaking) newSet.add(userId)
+        else newSet.delete(userId)
         return newSet
       })
 
@@ -120,6 +131,8 @@ export function useWebRTC(roomId, userData) {
 
   // Create peer connection for a specific user
   const createPeerConnection = useCallback((userId) => {
+    console.log("iceConfigRef.current", iceConfigRef.current);
+    
     const peerConnection = new RTCPeerConnection(iceConfigRef.current)
 
     // Add local stream tracks
@@ -127,6 +140,18 @@ export function useWebRTC(roomId, userData) {
       localStreamRef.current.getTracks().forEach(track => {
         peerConnection.addTrack(track, localStreamRef.current)
       })
+    }
+
+    peerConnection.onnegotiationneeded = async () => {
+      try {
+        const offer = await peerConnection.createOffer()
+        await peerConnection.setLocalDescription(offer)
+        wsRef.current.send(JSON.stringify({
+          type: 'offer',
+          target_user_id: userId,
+          offer: peerConnection.localDescription
+        }))
+      } catch (e) { console.warn('negotiation error', e) }
     }
 
     // Handle incoming stream
@@ -146,7 +171,8 @@ export function useWebRTC(roomId, userData) {
 
     // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
-      if (event.candidate && wsRef.current) {
+      if (event.candidate && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        console.log('sending candidate to', userId, event.candidate)
         wsRef.current.send(JSON.stringify({
           type: 'ice_candidate',
           target_user_id: userId,
