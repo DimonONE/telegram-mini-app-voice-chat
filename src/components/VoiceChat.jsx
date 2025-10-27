@@ -52,12 +52,13 @@ function VoiceChat({ roomId, userData, onLeaveRoom }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: false
+        video: true
       })
-      
+
+      stream.getVideoTracks().forEach(track => (track.enabled = false))
+
       localStreamRef.current = stream
-      
-      // Connect to room with initial stream
+
       connect(stream)
     } catch (error) {
       console.error('Error accessing media devices:', error)
